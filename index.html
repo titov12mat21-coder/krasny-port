@@ -84,6 +84,28 @@ canvas#c{position:fixed;inset:0;z-index:0;display:block}
 #stat{font:700 12px var(--body);color:var(--muted);letter-spacing:.03em}
 @media (prefers-reduced-motion:reduce){#stars.hot span.on{animation:none}}
 
+.bar.arm b{background:#c9d3df}
+#bWeap{width:62px;height:62px;right:102px;bottom:92px;font-size:11px;line-height:1.15;white-space:pre-line;text-align:center}
+#shop{position:fixed;inset:0;z-index:11;display:grid;place-items:center;background:rgba(8,12,18,.94);touch-action:pan-y;
+  padding-block:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-bottom,0px));
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+#shop[hidden]{display:none}
+.sc{width:min(100%,440px);max-height:100%;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:12px}
+.sh{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.sh h2{margin:0;font:400 26px/1 var(--display);letter-spacing:.04em;color:#5aa9ff}
+#shopCash{font:400 22px/1 var(--display);color:var(--good);font-variant-numeric:tabular-nums}
+#shopList{display:grid;gap:8px;align-content:start;overflow-y:auto;min-height:0;touch-action:pan-y;-webkit-overflow-scrolling:touch}
+.srow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.04)}
+.st{display:grid;gap:2px;min-width:0}
+.st b{font-size:15px}
+.st span{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.sbtn{min-height:44px;min-width:96px;border:0;border-radius:9px;background:var(--accent);color:#fff;font:400 14px var(--display);padding:0 12px;touch-action:manipulation;white-space:nowrap}
+.sbtn:disabled{background:#2a323d;color:var(--muted)}
+.sbtn:focus-visible,#shopClose:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.sf{display:grid;gap:8px}
+#shopMsg{min-height:18px;color:var(--gold);font-size:13px}
+#shopClose{border:0;border-radius:12px;background:#2f3a48;color:#fff;font:400 18px var(--display);letter-spacing:.06em;padding:14px;touch-action:manipulation}
+
 </style>
 </head>
 <body>
@@ -95,7 +117,7 @@ canvas#c{position:fixed;inset:0;z-index:0;display:block}
     <div id="left">
       <div class="card" id="hud">
         <div id="cash">$0</div><div id="clock">08:00</div>
-        <div class="bars"><div class="bar"><b id="hp"></b></div><div class="bar car" id="cbw" hidden><b id="chp"></b></div></div>
+        <div class="bars"><div class="bar"><b id="hp"></b></div><div class="bar arm" id="abw" hidden><b id="ahp"></b></div><div class="bar car" id="cbw" hidden><b id="chp"></b></div></div>
       </div>
       <div class="card" id="mis" hidden><div id="mt"><span id="mn"></span><span id="mr"></span></div><div id="ml"></div></div>
     </div>
@@ -109,9 +131,17 @@ canvas#c{position:fixed;inset:0;z-index:0;display:block}
   <div id="banner"></div>
   <div id="bot"><div class="pad">
     <button class="btn" id="bHand" type="button" hidden>ДРИФТ</button>
+    <button class="btn" id="bWeap" type="button">ПИСТ</button>
     <button class="btn" id="bAct" type="button">ВОЙТИ</button>
     <button class="btn" id="bFire" type="button">ОГОНЬ</button>
   </div></div>
+</div>
+<div id="shop" hidden>
+  <div class="sc">
+    <div class="sh"><h2>ОРУЖЕЙНАЯ</h2><div id="shopCash">$0</div></div>
+    <div id="shopList"></div>
+    <div class="sf"><div id="shopMsg"></div><button id="shopClose" type="button">ВЫЙТИ</button></div>
+  </div>
 </div>
 <div id="menu">
   <div class="mc">
@@ -122,6 +152,7 @@ canvas#c{position:fixed;inset:0;z-index:0;display:block}
       <li><b>Войти</b><span>сесть в машину рядом или выйти из неё</span></li>
       <li><b>Огонь</b><span>стрельба с автоприцелом; в машине есть ещё дрифт</span></li>
       <li><b>Маркеры</b><span>К, У, Б на карте: задания за деньги. Д: дом, лечит</span></li>
+      <li><b>Оружейная</b><span>синий маркер О: оружие, патроны, бронежилет. Кнопка с названием оружия переключает ствол</span></li>
     </ul>
     <div id="stat"></div>
     <button id="go" type="button">ИГРАТЬ</button>
@@ -234,7 +265,7 @@ function spark(x,y,n,col,sp,life,up){
   for(let k=0;k<n&&parts.length<260;k++){const a=rnd(0,TAU),s=rnd(.2,1)*sp;
     parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s+(up||0),life:rnd(.5,1)*life,max:life,col,sz:rnd(1.5,3.6)})}
 }
-const player={x:0,y:0,a:0,hp:100,r:7.5,car:null,dead:0,fireT:0,msg:''};
+const player={x:0,y:0,a:0,hp:100,armor:0,r:7.5,car:null,dead:0,fireT:0,msg:''};
 let heat=0,cash=0,done=0,clockT=.33,time=0,shake=0,started=false;
 const home={x:8*P+66,y:8*P+66};
 
@@ -265,12 +296,82 @@ function trafficSpot(minD){
   return null;
 }
 
+/* ---------- weapons & shop ---------- */
+const WEAPONS={
+  pistol:{id:'pistol',name:'Пистолет',short:'ПИСТ',price:0,rate:.2,dmg:30,spd:880,life:.55,pel:1,spread:0,aim:420,kick:0,pack:0,packPrice:0,desc:'Бесконечные патроны'},
+  smg:{id:'smg',name:'Пистолет-пулемёт',short:'ПП',price:900,rate:.085,dmg:15,spd:900,life:.5,pel:1,spread:.07,aim:380,kick:0,pack:90,packPrice:140,desc:'Скорострельный, с разбросом'},
+  shotgun:{id:'shotgun',name:'Дробовик',short:'ДРОБ',price:1500,rate:.75,dmg:13,spd:820,life:.3,pel:7,spread:.26,aim:240,kick:4,pack:20,packPrice:110,desc:'Мощный вблизи, 7 дробин'},
+  rifle:{id:'rifle',name:'Винтовка',short:'ВИНТ',price:2400,rate:.42,dmg:75,spd:1500,life:.8,pel:1,spread:.01,aim:620,kick:3,pack:24,packPrice:180,desc:'Дальний бой, сильный урон'}
+};
+const ORDER=['pistol','smg','shotgun','rifle'];
+const inv={own:['pistol'],ammo:{smg:0,shotgun:0,rifle:0},cur:'pistol'};
+const ARMOR_PRICE=500;
+const shop={x:9*P,y:8*P,open:false,lock:false};
+const curW=()=>WEAPONS[inv.cur];
+function switchWeapon(){
+  const list=ORDER.filter(id=>inv.own.includes(id)&&(id==='pistol'||inv.ammo[id]>0));
+  if(!list.length)return;
+  inv.cur=list[(list.indexOf(inv.cur)+1)%list.length];
+  toast(curW().name,'',900);
+}
+function shopSay(t){$('shopMsg').textContent=t}
+function renderShop(){
+  const el=$('shopList');el.textContent='';
+  $('shopCash').textContent='$'+cash.toLocaleString('ru-RU');
+  const row=(title,desc,label,can,fn)=>{
+    const r=document.createElement('div');r.className='srow';
+    const t=document.createElement('div');t.className='st';
+    const b=document.createElement('b');b.textContent=title;
+    const s=document.createElement('span');s.textContent=desc;
+    t.appendChild(b);t.appendChild(s);
+    const btn=document.createElement('button');btn.type='button';btn.className='sbtn';btn.textContent=label;btn.disabled=!can;
+    btn.addEventListener('click',fn);
+    r.appendChild(t);r.appendChild(btn);el.appendChild(r);
+  };
+  for(const id of ORDER){
+    if(id==='pistol')continue;
+    const w=WEAPONS[id],dm=w.dmg+(w.pel>1?'×'+w.pel:'');
+    if(!inv.own.includes(id)){
+      row(w.name,w.desc+'. Урон '+dm+', в комплекте '+w.pack+' патр.','$'+w.price,cash>=w.price,()=>{
+        if(cash<w.price)return;cash-=w.price;inv.own.push(id);inv.ammo[id]+=w.pack;inv.cur=id;save();renderShop();shopSay('Куплено: '+w.name);
+      });
+    }else{
+      row(w.name+': '+inv.ammo[id]+' патр.','Урон '+dm+'. Пачка '+w.pack+' патронов','+'+w.pack+'   $'+w.packPrice,cash>=w.packPrice&&inv.ammo[id]<999,()=>{
+        if(cash<w.packPrice)return;cash-=w.packPrice;inv.ammo[id]+=w.pack;save();renderShop();shopSay('Патроны: '+w.name);
+      });
+    }
+  }
+  row('Бронежилет'+(player.armor>0?': '+Math.round(player.armor)+'%':''),'Принимает 70% урона, до 100','$'+ARMOR_PRICE,cash>=ARMOR_PRICE&&player.armor<100,()=>{
+    if(cash<ARMOR_PRICE)return;cash-=ARMOR_PRICE;player.armor=100;save();renderShop();shopSay('Бронежилет надет');
+  });
+}
+function openShop(){
+  shop.lock=true;
+  if(stars()>0){toast('Копы рядом, оружейная закрыта','bad',1600);return}
+  shop.open=true;paused=true;stickEnd();btnFire=false;btnHand=false;
+  renderShop();shopSay('');$('shop').hidden=false;
+}
+function closeShop(){shop.open=false;$('shop').hidden=true;paused=false;inp.act=false;save()}
+function updShop(){
+  const d=hyp(shop.x-player.x,shop.y-player.y);
+  if(d>80){shop.lock=false;return}
+  if(shop.lock||player.dead>0||!started||d>=36)return;
+  if(player.car){shop.lock=true;toast('Выйди из машины, чтобы зайти в оружейную','',1800)}
+  else openShop();
+}
+
 /* ---------- ui helpers ---------- */
 let toastT=0,bannerT=0;
 function toast(msg,cls,ms){const t=$('toast');t.textContent=msg;t.className='show '+(cls||'');clearTimeout(toastT);toastT=setTimeout(()=>{t.className=''},ms||2200)}
 function banner(msg){const b=$('banner');if(!msg){b.className='';return}b.textContent=msg;b.className='show'}
-function save(){try{localStorage.setItem('krasny-port-v1',JSON.stringify({cash,done}))}catch(e){}}
-function load(){try{const s=JSON.parse(localStorage.getItem('krasny-port-v1')||'null');if(s){cash=s.cash|0;done=s.done|0}}catch(e){}}
+function save(){try{localStorage.setItem('krasny-port-v1',JSON.stringify({cash,done,own:inv.own,ammo:inv.ammo,cur:inv.cur,armor:Math.round(player.armor)}))}catch(e){}}
+function load(){try{const s=JSON.parse(localStorage.getItem('krasny-port-v1')||'null');if(s){
+  cash=s.cash|0;done=s.done|0;player.armor=clamp(s.armor|0,0,100);
+  if(Array.isArray(s.own))inv.own=ORDER.filter(id=>id==='pistol'||s.own.includes(id));
+  if(s.ammo)for(const id of ORDER)if(id!=='pistol')inv.ammo[id]=Math.max(0,s.ammo[id]|0);
+  inv.cur=inv.own.includes(s.cur)?s.cur:'pistol';
+  if(inv.cur!=='pistol'&&inv.ammo[inv.cur]<=0)inv.cur='pistol';
+}}catch(e){}}
 const stars=()=>Math.min(5,Math.ceil(heat/25));
 function addHeat(n){heat=Math.min(125,heat+n)}
 
@@ -289,6 +390,7 @@ function hurtPed(p,dmg,byPlayer){
 }
 function hurtPlayer(n){
   if(player.dead>0||n<=0)return;
+  if(player.armor>0){const a=Math.min(player.armor,n*.7);player.armor-=a;n-=a}
   player.hp-=n;shake=Math.max(shake,5);
   if(player.hp<=0)die('ПОТРАЧЕНО');
 }
@@ -320,7 +422,7 @@ function die(msg){
   save();
 }
 function respawn(){
-  player.x=home.x;player.y=home.y;player.hp=100;player.dead=0;player.car=null;heat=0;banner('');
+  player.x=home.x;player.y=home.y;player.hp=100;player.armor=0;player.dead=0;player.car=null;heat=0;banner('');
   for(let k=cars.length-1;k>=0;k--)if(cars[k].cop&&!cars[k].player&&hyp(cars[k].x-home.x,cars[k].y-home.y)<500)cars.splice(k,1);
   for(let k=peds.length-1;k>=0;k--)if(peds[k].cop)peds.splice(k,1);
   cam.x=home.x;cam.y=home.y;
@@ -472,29 +574,36 @@ function updPed(p,dt){
 
 /* ---------- shooting ---------- */
 function shoot(){
-  const car=player.car;
+  const car=player.car,W=curW();
+  if(W.id!=='pistol'&&inv.ammo[W.id]<=0){switchWeapon();player.fireT=.3;return}
   let ox=player.x,oy=player.y,ang=car?car.a:player.a;
-  let best=null,bd=420;
+  let best=null,bd=W.aim;
   const test=(x,y)=>{const d=hyp(x-ox,y-oy);if(d>=bd)return;if(car&&Math.abs(angd(car.a,Math.atan2(y-oy,x-ox)))>.9)return;bd=d;best={x,y}};
   for(const p of peds)if(p.hp>0)test(p.x,p.y);
   for(const c of cars)if(c!==car&&c.dead===0&&(c.ai||c.cop||c.target))test(c.x,c.y);
   if(best)ang=Math.atan2(best.y-oy,best.x-ox);
   if(!car)player.a=ang;
   else{ox+=Math.cos(car.a)*car.w*.55;oy+=Math.sin(car.a)*car.w*.55}
-  bullets.push({x:ox+Math.cos(ang)*10,y:oy+Math.sin(ang)*10,vx:Math.cos(ang)*880+(car?car.vx:0),vy:Math.sin(ang)*880+(car?car.vy:0),life:.55});
+  for(let k=0;k<W.pel;k++){
+    const a=ang+(W.spread?rnd(-W.spread,W.spread):0),sp=W.spd*(W.pel>1?rnd(.85,1.05):1);
+    bullets.push({x:ox+Math.cos(a)*10,y:oy+Math.sin(a)*10,vx:Math.cos(a)*sp+(car?car.vx:0),vy:Math.sin(a)*sp+(car?car.vy:0),life:W.life,dmg:W.dmg});
+  }
+  if(W.id!=='pistol'){inv.ammo[W.id]--;if(inv.ammo[W.id]<=0)toast('Патроны кончились','bad',1200)}
+  if(W.kick)shake=Math.max(shake,W.kick);
   spark(ox+Math.cos(ang)*12,oy+Math.sin(ang)*12,3,'#ffe28a',120,.12);
-  player.fireT=.2;scare(ox,oy,260);
+  player.fireT=W.rate;scare(ox,oy,260);
 }
-function updBullets(dt){
+function updBullets(dt){for(let s=0;s<4;s++)stepBullets(dt/4)}
+function stepBullets(dt){
   for(let k=bullets.length-1;k>=0;k--){
     const b=bullets[k];b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;
     let hit=b.life<=0;
     if(!hit&&inBuilding(b.x,b.y)){spark(b.x,b.y,3,'#ddd',90,.25);hit=true}
-    if(!hit)for(const p of peds){if(p.hp>0&&hyp(p.x-b.x,p.y-b.y)<9){hurtPed(p,p.cop?22:30,true);hit=true;break}}
+    if(!hit)for(const p of peds){if(p.hp>0&&hyp(p.x-b.x,p.y-b.y)<9){hurtPed(p,b.dmg,true);hit=true;break}}
     if(!hit)for(const c of cars){
       if(c.player||c.dead>0)continue;
       if(hyp(c.x-b.x,c.y-b.y)<c.w*.5+2){const co=Math.cos(c.a),si=Math.sin(c.a),dx=b.x-c.x,dy=b.y-c.y;
-        if(Math.abs(dx*co+dy*si)<c.w/2&&Math.abs(-dx*si+dy*co)<c.h/2){spark(b.x,b.y,3,'#ffd27a',110,.25);hurtCar(c,22,true);if(c.cop)addHeat(2);hit=true;break}}
+        if(Math.abs(dx*co+dy*si)<c.w/2&&Math.abs(-dx*si+dy*co)<c.h/2){spark(b.x,b.y,3,'#ffd27a',110,.25);hurtCar(c,b.dmg*.8,true);if(c.cop)addHeat(2);hit=true;break}}
     }
     if(hit)bullets.splice(k,1);
   }
@@ -568,7 +677,7 @@ let mis=null;
 function nodePt(){return{x:ri(2,N-2)*P,y:ri(2,N-2)*P}}
 function nodeNear(p,a,b){for(let k=0;k<40;k++){const q=nodePt(),d=hyp(q.x-p.x,q.y-p.y);if(d>=a&&d<=b)return q}return nodePt()}
 function newSpot(type){
-  for(let k=0;k<30;k++){const p=nodePt();if(hyp(p.x-home.x,p.y-home.y)>420&&spots.every(s=>hyp(s.x-p.x,s.y-p.y)>700)){spots.push({x:p.x,y:p.y,type:type||pick(['courier','steal','gang']),msgT:0});return}}
+  for(let k=0;k<30;k++){const p=nodePt();if(hyp(p.x-home.x,p.y-home.y)>420&&hyp(p.x-shop.x,p.y-shop.y)>420&&spots.every(s=>hyp(s.x-p.x,s.y-p.y)>700)){spots.push({x:p.x,y:p.y,type:type||pick(['courier','steal','gang']),msgT:0});return}}
 }
 function startMission(s){
   const type=s.type,A=nodeNear(s,500,1200);let steps,reward,title=MT[type].name,t=0;
@@ -657,7 +766,9 @@ function hold(el,on,off){
 hold($('bFire'),()=>{btnFire=true},()=>{btnFire=false});
 hold($('bHand'),()=>{btnHand=true},()=>{btnHand=false});
 $('bAct').addEventListener('pointerdown',e=>{e.preventDefault();inp.act=true});
-addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='KeyE'||e.code==='Enter')inp.act=true;if(e.code==='Space')e.preventDefault()});
+$('bWeap').addEventListener('pointerdown',e=>{e.preventDefault();switchWeapon()});
+$('shopClose').addEventListener('click',closeShop);
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='KeyE'||e.code==='Enter')inp.act=true;if(e.code==='KeyQ')switchWeapon();if(e.code==='Space')e.preventDefault()});
 addEventListener('keyup',e=>{keys[e.code]=false});
 addEventListener('contextmenu',e=>e.preventDefault());
 function readKeys(){
@@ -718,7 +829,7 @@ function update(dt){
     for(const p of peds)if(p.cop&&p.hp>0)near=Math.min(near,hyp(p.x-player.x,p.y-player.y));
     heat=Math.max(0,heat-(near<520?.12:2)*dt);
   }
-  updMission(dt);
+  updMission(dt);updShop();
   shake=Math.max(0,shake-dt*30);
   if(Math.floor(time)%12===0&&frameN%60===0)save();
 }
@@ -831,6 +942,7 @@ function draw(){
   for(const d of decals){ctx.globalAlpha=Math.min(1,d.t/6)*(d.r<3?1:.9);ctx.fillStyle=d.col;ctx.beginPath();ctx.arc(d.x,d.y,d.r,0,TAU);ctx.fill()}
   ctx.globalAlpha=1;
   ring(home.x,home.y,26,'#3ddc97','Д');
+  ring(shop.x,shop.y,30,'#5aa9ff','О');
   if(!mis||true)for(const s of spots)if(!s.busy)ring(s.x,s.y,34,'#ffcf3f',MT[s.type].g);
   for(const m of cashs){ctx.fillStyle='#3ddc97';ctx.fillRect(m.x-6,m.y-4,12,8);ctx.fillStyle='#1b7a52';ctx.fillRect(m.x-2,m.y-2,4,4)}
   const st=mis&&mis.steps[mis.i];
@@ -890,6 +1002,7 @@ function drawMini(){
     mx.fillStyle=col;mx.beginPath();mx.arc(c+dx,c+dy,r,0,TAU);mx.fill();
   };
   dot(home.x,home.y,'#3ddc97',6,true);
+  dot(shop.x,shop.y,'#5aa9ff',6,true);
   for(const s of spots)if(!s.busy)dot(s.x,s.y,'#ffcf3f',7,true);
   for(const t of targets())dot(t.x,t.y,t.col,8,true);
   const f=Math.floor(time*4)%2;
@@ -905,6 +1018,7 @@ const starEls=[];for(let i=0;i<5;i++){const s=document.createElement('span');s.t
 function updHUD(){
   setT('cash','$'+cash.toLocaleString('ru-RU'));
   $('hp').style.width=clamp(player.hp,0,100)+'%';
+  setH('abw',player.armor<=0);if(player.armor>0)$('ahp').style.width=clamp(player.armor,0,100)+'%';
   const c=player.car;setH('cbw',!c);if(c)$('chp').style.width=clamp(c.hp/c.maxhp*100,0,100)+'%';
   const hrs=clockT*24,hh=Math.floor(hrs),mi=Math.floor((hrs-hh)*60);
   setT('clock',String(hh).padStart(2,'0')+':'+String(mi).padStart(2,'0'));
@@ -920,6 +1034,7 @@ function updHUD(){
     }
   }
   setT('bAct',c?'ВЫЙТИ':'ВОЙТИ');setH('bHand',!c);
+  {const w=curW();setT('bWeap',w.short+'\n'+(w.id==='pistol'?'∞':inv.ammo[w.id]))}
   let near=!!c;if(!c)for(const k of cars)if(k.dead===0&&hyp(k.x-player.x,k.y-player.y)<50){near=true;break}
   $('bAct').classList.toggle('dim',!near);
 }
@@ -932,7 +1047,7 @@ function showMenu(){
 }
 go.addEventListener('click',()=>{started=true;paused=false;menu.hidden=true;inp.act=false});
 $('bPause').addEventListener('click',()=>{if(started)showMenu()});
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&started&&menu.hidden)showMenu()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&started&&menu.hidden&&$('shop').hidden)showMenu()});
 let last=0;
 function frame(t){
   requestAnimationFrame(frame);
