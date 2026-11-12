@@ -106,6 +106,9 @@ canvas#c{position:fixed;inset:0;z-index:0;display:block}
 #shopMsg{min-height:18px;color:var(--gold);font-size:13px}
 #shopClose{border:0;border-radius:12px;background:#2f3a48;color:#fff;font:400 18px var(--display);letter-spacing:.06em;padding:14px;touch-action:manipulation}
 
+.brow{display:flex;gap:6px}
+.mini-btn.off{opacity:.45;text-decoration:line-through}
+
 </style>
 </head>
 <body>
@@ -124,7 +127,7 @@ canvas#c{position:fixed;inset:0;z-index:0;display:block}
     <div id="right">
       <canvas id="mini" width="216" height="216"></canvas>
       <div id="stars"></div>
-      <button class="mini-btn" id="bPause" type="button" aria-label="Пауза">II</button>
+      <div class="brow"><button class="mini-btn" id="bMute" type="button" aria-label="Звук" aria-pressed="false">♪</button><button class="mini-btn" id="bPause" type="button" aria-label="Пауза">II</button></div>
     </div>
   </div>
   <div id="toast"></div>
@@ -151,7 +154,7 @@ canvas#c{position:fixed;inset:0;z-index:0;display:block}
       <li><b>Левый палец</b><span>ходьба и руль: куда повёл, туда и едешь</span></li>
       <li><b>Войти</b><span>сесть в машину рядом или выйти из неё</span></li>
       <li><b>Огонь</b><span>стрельба с автоприцелом; в машине есть ещё дрифт</span></li>
-      <li><b>Маркеры</b><span>К, У, Б на карте: задания за деньги. Д: дом, лечит</span></li>
+      <li><b>Маркеры</b><span>К, У, Б, Г на карте: задания за деньги (Г: гонка по точкам). Д: дом, лечит</span></li>
       <li><b>Оружейная</b><span>синий маркер О: оружие, патроны, бронежилет. Кнопка с названием оружия переключает ствол</span></li>
     </ul>
     <div id="stat"></div>
@@ -325,7 +328,7 @@ function renderShop(){
     const s=document.createElement('span');s.textContent=desc;
     t.appendChild(b);t.appendChild(s);
     const btn=document.createElement('button');btn.type='button';btn.className='sbtn';btn.textContent=label;btn.disabled=!can;
-    btn.addEventListener('click',fn);
+    btn.addEventListener('click',()=>{fn();tone(700,1100,.1,'square',.12)});
     r.appendChild(t);r.appendChild(btn);el.appendChild(r);
   };
   for(const id of ORDER){
@@ -358,6 +361,63 @@ function updShop(){
   if(shop.lock||player.dead>0||!started||d>=36)return;
   if(player.car){shop.lock=true;toast('Выйди из машины, чтобы зайти в оружейную','',1800)}
   else openShop();
+}
+
+/* ---------- sound (WebAudio, synthesized) ---------- */
+const snd={ac:null,on:true,master:null,nb:null,voices:0,crashT:0};
+try{snd.on=localStorage.getItem('krasny-port-snd')!=='0'}catch(e){}
+function applyMute(){
+  $('bMute').classList.toggle('off',!snd.on);$('bMute').setAttribute('aria-pressed',String(!snd.on));
+  if(snd.master)snd.master.gain.value=snd.on?.5:0;
+}
+function sndInit(){
+  if(snd.ac){if(snd.ac.state==='suspended')snd.ac.resume();return}
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
+    const ac=new AC();snd.master=ac.createGain();snd.master.connect(ac.destination);
+    const nb=ac.createBuffer(1,ac.sampleRate,ac.sampleRate),d=nb.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;snd.nb=nb;
+    const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=420;
+    snd.eg=ac.createGain();snd.eg.gain.value=0;lp.connect(snd.eg);snd.eg.connect(snd.master);
+    snd.o1=ac.createOscillator();snd.o1.type='sawtooth';snd.o2=ac.createOscillator();snd.o2.type='square';
+    snd.o1.connect(lp);snd.o2.connect(lp);snd.o1.start();snd.o2.start();
+    snd.sg=ac.createGain();snd.sg.gain.value=0;snd.so=ac.createOscillator();snd.so.type='triangle';
+    snd.so.connect(snd.sg);snd.sg.connect(snd.master);snd.so.start();
+    snd.ac=ac;applyMute();if(ac.state==='suspended')ac.resume();
+  }catch(e){snd.ac=null}
+}
+function tone(f0,f1,dur,type,vol,delay){
+  const ac=snd.ac;if(!ac||!snd.on||snd.voices>22)return;
+  const t=ac.currentTime+(delay||0),o=ac.createOscillator(),g=ac.createGain();
+  o.type=type;o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(Math.max(20,f1),t+dur);
+  g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);
+  o.connect(g);g.connect(snd.master);o.start(t);o.stop(t+dur+.03);snd.voices++;o.onended=()=>{snd.voices--};
+}
+function noise(dur,vol,freq){
+  const ac=snd.ac;if(!ac||!snd.on||snd.voices>22)return;
+  const t=ac.currentTime,s=ac.createBufferSource(),f=ac.createBiquadFilter(),g=ac.createGain();
+  s.buffer=snd.nb;f.type='lowpass';f.frequency.value=freq;
+  g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);
+  s.connect(f);f.connect(g);g.connect(snd.master);s.start(t,Math.random()*.5);s.stop(t+dur+.03);snd.voices++;s.onended=()=>{snd.voices--};
+}
+const sndVol=(x,y)=>clamp(1-hyp(x-player.x,y-player.y)/900,0,1);
+function sndShot(id){
+  if(id==='pistol'){noise(.1,.3,2600);tone(260,70,.09,'square',.1)}
+  else if(id==='smg'){noise(.07,.22,3200);tone(300,90,.06,'square',.07)}
+  else if(id==='shotgun'){noise(.3,.55,1100);tone(140,40,.22,'sawtooth',.25)}
+  else{noise(.4,.45,1600);tone(190,45,.32,'square',.2)}
+}
+function sndBoom(x,y){const v=sndVol(x,y);if(v<=0)return;noise(1,.8*v,380);tone(110,28,.8,'sawtooth',.35*v)}
+function sndCrash(x,y,imp){if(time-snd.crashT<.18)return;snd.crashT=time;const v=sndVol(x,y)*clamp(imp/260,.3,1);if(v>0)noise(.18,.5*v,700)}
+function sndUpdate(){
+  const ac=snd.ac;if(!ac||!snd.eg)return;
+  const t=ac.currentTime,live=started&&!paused&&snd.on&&player.dead<=0,c=player.car;
+  let eg=0,sg=0;
+  if(live&&c){const sp=hyp(c.vx,c.vy),f=42+sp*.32+(inp.m>.1?10:0);eg=.05+Math.min(sp,400)/400*.08;snd.o1.frequency.setTargetAtTime(f,t,.06);snd.o2.frequency.setTargetAtTime(f*1.5,t,.06)}
+  if(live&&stars()>0){
+    let near=1e9;for(const k of cars)if(k.cop&&k.chase&&k.dead===0)near=Math.min(near,hyp(k.x-player.x,k.y-player.y));
+    if(near<800){sg=.05*(1-near/800);snd.so.frequency.setTargetAtTime(650+380*Math.sin(time*5.5),t,.02)}
+  }
+  snd.eg.gain.setTargetAtTime(eg,t,.08);snd.sg.gain.setTargetAtTime(sg,t,.15);
 }
 
 /* ---------- ui helpers ---------- */
@@ -395,6 +455,7 @@ function hurtPlayer(n){
   if(player.hp<=0)die('ПОТРАЧЕНО');
 }
 function boom(x,y,byPlayer){
+  sndBoom(x,y);
   spark(x,y,26,'#ffb347',260,.7);spark(x,y,14,'#ff5a36',170,.9);spark(x,y,12,'#2a2a2a',90,1.5,-30);shake=Math.max(shake,14);
   for(const p of peds)if(p.hp>0&&hyp(p.x-x,p.y-y)<80)hurtPed(p,60,byPlayer);
   if(hyp(player.x-x,player.y-y)<80)hurtPlayer(35);
@@ -461,7 +522,7 @@ function moveCar(c,dt){
   }
   c.x=clamp(c.x,-LIM,S+LIM);c.y=clamp(c.y,-LIM,S+LIM);
   if(imp>110){
-    const d=(imp-90)*.14;spark(c.x,c.y,4,'#ffd27a',160,.35);
+    const d=(imp-90)*.14;spark(c.x,c.y,4,'#ffd27a',160,.35);sndCrash(c.x,c.y,imp);
     if(c.player)shake=Math.max(shake,imp/22);
     hurtCar(c,d,false);
   }
@@ -591,7 +652,7 @@ function shoot(){
   if(W.id!=='pistol'){inv.ammo[W.id]--;if(inv.ammo[W.id]<=0)toast('Патроны кончились','bad',1200)}
   if(W.kick)shake=Math.max(shake,W.kick);
   spark(ox+Math.cos(ang)*12,oy+Math.sin(ang)*12,3,'#ffe28a',120,.12);
-  player.fireT=W.rate;scare(ox,oy,260);
+  player.fireT=W.rate;scare(ox,oy,260);sndShot(W.id);
 }
 function updBullets(dt){for(let s=0;s<4;s++)stepBullets(dt/4)}
 function stepBullets(dt){
@@ -663,7 +724,7 @@ function updPlayer(dt){
   if(inp.fire&&player.fireT<=0)shoot();
   if(inp.act){inp.act=false;tryAct()}
   // pickups
-  for(let k=cashs.length-1;k>=0;k--){const m=cashs[k];if(hyp(m.x-player.x,m.y-player.y)<22){cash+=m.v;cashs.splice(k,1);toast('+$'+m.v,'good',700)}}
+  for(let k=cashs.length-1;k>=0;k--){const m=cashs[k];if(hyp(m.x-player.x,m.y-player.y)<22){cash+=m.v;cashs.splice(k,1);(toast('+$'+m.v,'good',700),tone(880,1320,.12,'sine',.18))}}
   // home
   if(hyp(home.x-player.x,home.y-player.y)<34){
     if(player.hp<100)player.hp=Math.min(100,player.hp+24*dt);
@@ -672,12 +733,12 @@ function updPlayer(dt){
 }
 
 /* ---------- missions ---------- */
-const spots=[],MT={courier:{g:'К',name:'Курьер'},steal:{g:'У',name:'Угон'},gang:{g:'Б',name:'Бригада'}};
+const spots=[],MT={courier:{g:'К',name:'Курьер'},steal:{g:'У',name:'Угон'},gang:{g:'Б',name:'Бригада'},race:{g:'Г',name:'Гонка'}};
 let mis=null;
 function nodePt(){return{x:ri(2,N-2)*P,y:ri(2,N-2)*P}}
 function nodeNear(p,a,b){for(let k=0;k<40;k++){const q=nodePt(),d=hyp(q.x-p.x,q.y-p.y);if(d>=a&&d<=b)return q}return nodePt()}
 function newSpot(type){
-  for(let k=0;k<30;k++){const p=nodePt();if(hyp(p.x-home.x,p.y-home.y)>420&&hyp(p.x-shop.x,p.y-shop.y)>420&&spots.every(s=>hyp(s.x-p.x,s.y-p.y)>700)){spots.push({x:p.x,y:p.y,type:type||pick(['courier','steal','gang']),msgT:0});return}}
+  for(let k=0;k<30;k++){const p=nodePt();if(hyp(p.x-home.x,p.y-home.y)>420&&hyp(p.x-shop.x,p.y-shop.y)>420&&spots.every(s=>hyp(s.x-p.x,s.y-p.y)>700)){spots.push({x:p.x,y:p.y,type:type||pick(['courier','steal','gang','race']),msgT:0});return}}
 }
 function startMission(s){
   const type=s.type,A=nodeNear(s,500,1200);let steps,reward,title=MT[type].name,t=0;
@@ -688,6 +749,11 @@ function startMission(s){
     const Bp=nodeNear(A,1200,2400),d=hyp(Bp.x-A.x,Bp.y-A.y),lp=lanePos(A.x/P,A.y/P,0);reward=Math.round(600+d*.15);
     const car=mkCar('sport',lp[0],lp[1],0,{col:'#ffd23f',keep:true});
     steps=[{k:'enter',car,txt:'Угони золотой спорткар'},{k:'go',x:Bp.x,y:Bp.y,r:60,txt:'Пригони его в гараж, пока не поймали',time:Math.round(d/190+40),car}];
+  }else if(type==='race'){
+    const pts=[];let prev={x:s.x,y:s.y},tot=0;
+    for(let k=0;k<5;k++){const q=nodeNear(prev,500,1000),d=hyp(q.x-prev.x,q.y-prev.y);pts.push({q,seg:d/185+5});tot+=d;prev=q}
+    reward=Math.round(450+tot*.12);
+    steps=pts.map((o,k)=>({k:'go',x:o.q.x,y:o.q.y,r:58,needCar:true,txt:'Гонка: точка '+(k+1)+'/5, нужна машина',time:k===0?Math.round(o.seg+8):undefined,bonus:k>0?Math.round(o.seg):undefined}));
   }else{
     const vans=[];reward=650;
     for(let k=0;k<3;k++){const n=nodeNear(s,600,1800),d=ri(0,3),lp=lanePos(n.x/P,n.y/P,d);
@@ -702,7 +768,7 @@ function startMission(s){
 function nextStep(first){
   if(!first)mis.i++;
   if(mis.i>=mis.steps.length){completeMission();return}
-  const st=mis.steps[mis.i];if(st.time)mis.t=st.time;
+  const st=mis.steps[mis.i];if(st.time)mis.t=st.time;if(st.bonus){mis.t+=st.bonus;toast('Точка! +'+st.bonus+' с','good',900);tone(900,1400,.1,'square',.12)}
   if(st.k==='enter'||st.k==='go'&&st.car&&false)return;
 }
 function endMission(){
@@ -711,9 +777,11 @@ function endMission(){
   mis=null;setTimeout(()=>newSpot(),9000);
 }
 function completeMission(){
+  tone(523,523,.12,'square',.14);tone(659,659,.12,'square',.14,.12);tone(784,1046,.3,'square',.14,.24);
   cash+=mis.reward;done++;toast('Задание выполнено  +$'+mis.reward,'good',2600);save();endMission();
 }
-function failMission(why){toast('Провал: '+why,'bad',2400);endMission()}
+function failMission(why){
+  tone(300,120,.5,'sawtooth',.16);toast('Провал: '+why,'bad',2400);endMission()}
 function updMission(dt){
   if(!mis){
     if(player.dead>0)return;
@@ -729,7 +797,7 @@ function updMission(dt){
   if(st.time!==undefined||mis.t>0){mis.t-=dt;if(mis.t<=0){failMission('время вышло');return}}
   if(st.k==='go'){
     if(st.car&&player.car!==st.car){if(st.car.dead>0){failMission('машина уничтожена');return}}
-    else if(hyp(st.x-player.x,st.y-player.y)<st.r)nextStep();
+    else if(hyp(st.x-player.x,st.y-player.y)<st.r&&(!st.needCar||player.car))nextStep();
   }else if(st.k==='enter'){
     if(st.car.dead>0){failMission('машина уничтожена');return}
     if(player.car===st.car){addHeat(32);toast('Тебя заметили!','bad',1400);nextStep()}
@@ -768,6 +836,7 @@ hold($('bHand'),()=>{btnHand=true},()=>{btnHand=false});
 $('bAct').addEventListener('pointerdown',e=>{e.preventDefault();inp.act=true});
 $('bWeap').addEventListener('pointerdown',e=>{e.preventDefault();switchWeapon()});
 $('shopClose').addEventListener('click',closeShop);
+$('bMute').addEventListener('click',()=>{sndInit();snd.on=!snd.on;try{localStorage.setItem('krasny-port-snd',snd.on?'1':'0')}catch(e){}applyMute()});
 addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='KeyE'||e.code==='Enter')inp.act=true;if(e.code==='KeyQ')switchWeapon();if(e.code==='Space')e.preventDefault()});
 addEventListener('keyup',e=>{keys[e.code]=false});
 addEventListener('contextmenu',e=>e.preventDefault());
@@ -947,6 +1016,7 @@ function draw(){
   for(const m of cashs){ctx.fillStyle='#3ddc97';ctx.fillRect(m.x-6,m.y-4,12,8);ctx.fillStyle='#1b7a52';ctx.fillRect(m.x-2,m.y-2,4,4)}
   const st=mis&&mis.steps[mis.i];
   if(st&&st.k==='go')ring(st.x,st.y,st.r,'#ffcf3f','');
+  {const nx=mis&&mis.steps[mis.i+1];if(nx&&nx.needCar)ring(nx.x,nx.y,nx.r*.7,'#ffffff','')}
   for(const c of cars)if(c.dead>0&&c.x>x0&&c.x<x1&&c.y>y0&&c.y<y1)drawCar(c);
   for(const c of cars)if(c.dead===0&&c.x>x0&&c.x<x1&&c.y>y0&&c.y<y1)drawCar(c);
   for(const p of peds)if(p.x>x0&&p.x<x1&&p.y>y0&&p.y<y1)drawPed(p,false);
@@ -1045,7 +1115,7 @@ function showMenu(){
   menu.hidden=false;paused=started;go.textContent=started?'ПРОДОЛЖИТЬ':'ИГРАТЬ';
   $('stat').textContent=done||cash?('Деньги: $'+cash.toLocaleString('ru-RU')+'  ·  Заданий выполнено: '+done):'';
 }
-go.addEventListener('click',()=>{started=true;paused=false;menu.hidden=true;inp.act=false});
+go.addEventListener('click',()=>{sndInit();started=true;paused=false;menu.hidden=true;inp.act=false});
 $('bPause').addEventListener('click',()=>{if(started)showMenu()});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&started&&menu.hidden&&$('shop').hidden)showMenu()});
 let last=0;
@@ -1053,13 +1123,13 @@ function frame(t){
   requestAnimationFrame(frame);
   const dt=Math.min(.033,(t-last)/1000||0);last=t;
   if(!paused)update(dt);
-  updCam(dt);draw();drawMini();updHUD();
+  updCam(dt);draw();drawMini();updHUD();sndUpdate();
 }
 (function boot(){
-  resize();load();
+  resize();load();applyMute();
   player.x=home.x;player.y=home.y;cam.x=home.x;cam.y=home.y;
   mkCar('sedan',8*P+120,8*P+LO,0,{col:'#2980b9'});
-  for(let k=0;k<5;k++)newSpot(['courier','steal','gang','courier','steal'][k]);
+  for(let k=0;k<6;k++)newSpot(['courier','steal','gang','race','courier','race'][k]);
   for(let k=0;k<40;k++){const s=trafficSpot(220);if(s)mkTraffic(s.x,s.y,s.d)}
   for(let k=0;k<90;k++)spawnPed(160);
   setStick(idleX,idleY);showMenu();
