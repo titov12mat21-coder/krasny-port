@@ -108,6 +108,7 @@ canvas#c{position:fixed;inset:0;z-index:0;display:block}
 
 .brow{display:flex;gap:6px}
 .mini-btn.off{opacity:.45;text-decoration:line-through}
+#bGren{width:56px;height:56px;right:172px;bottom:84px;font-size:10px;line-height:1.15;white-space:pre-line;text-align:center}
 
 </style>
 </head>
@@ -135,6 +136,7 @@ canvas#c{position:fixed;inset:0;z-index:0;display:block}
   <div id="bot"><div class="pad">
     <button class="btn" id="bHand" type="button" hidden>ДРИФТ</button>
     <button class="btn" id="bWeap" type="button">ПИСТ</button>
+    <button class="btn" id="bGren" type="button">ГРАН</button>
     <button class="btn" id="bAct" type="button">ВОЙТИ</button>
     <button class="btn" id="bFire" type="button">ОГОНЬ</button>
   </div></div>
@@ -153,7 +155,7 @@ canvas#c{position:fixed;inset:0;z-index:0;display:block}
     <ul>
       <li><b>Левый палец</b><span>ходьба и руль: куда повёл, туда и едешь</span></li>
       <li><b>Войти</b><span>сесть в машину рядом или выйти из неё</span></li>
-      <li><b>Огонь</b><span>стрельба с автоприцелом; в машине есть ещё дрифт</span></li>
+      <li><b>Огонь</b><span>стрельба с автоприцелом; «Гран» бросает гранату; в машине есть ещё дрифт</span></li>
       <li><b>Маркеры</b><span>К, У, Б, Г на карте: задания за деньги (Г: гонка по точкам). Д: дом, лечит</span></li>
       <li><b>Оружейная</b><span>синий маркер О: оружие, патроны, бронежилет. Кнопка с названием оружия переключает ствол</span></li>
     </ul>
@@ -268,7 +270,7 @@ function spark(x,y,n,col,sp,life,up){
   for(let k=0;k<n&&parts.length<260;k++){const a=rnd(0,TAU),s=rnd(.2,1)*sp;
     parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s+(up||0),life:rnd(.5,1)*life,max:life,col,sz:rnd(1.5,3.6)})}
 }
-const player={x:0,y:0,a:0,hp:100,armor:0,r:7.5,car:null,dead:0,fireT:0,msg:''};
+const player={x:0,y:0,a:0,hp:100,armor:0,gT:0,r:7.5,car:null,dead:0,fireT:0,msg:''};
 let heat=0,cash=0,done=0,clockT=.33,time=0,shake=0,started=false;
 const home={x:8*P+66,y:8*P+66};
 
@@ -307,7 +309,7 @@ const WEAPONS={
   rifle:{id:'rifle',name:'Винтовка',short:'ВИНТ',price:2400,rate:.42,dmg:75,spd:1500,life:.8,pel:1,spread:.01,aim:620,kick:3,pack:24,packPrice:180,desc:'Дальний бой, сильный урон'}
 };
 const ORDER=['pistol','smg','shotgun','rifle'];
-const inv={own:['pistol'],ammo:{smg:0,shotgun:0,rifle:0},cur:'pistol'};
+const inv={own:['pistol'],ammo:{smg:0,shotgun:0,rifle:0},cur:'pistol',gren:0};
 const ARMOR_PRICE=500;
 const shop={x:9*P,y:8*P,open:false,lock:false};
 const curW=()=>WEAPONS[inv.cur];
@@ -344,6 +346,9 @@ function renderShop(){
       });
     }
   }
+  row('Гранаты: '+inv.gren,'Бросок по цели. Взрыв задевает и тебя. Пачка 5','+5   $300',cash>=300&&inv.gren<=15,()=>{
+    if(cash<300)return;cash-=300;inv.gren=Math.min(20,inv.gren+5);save();renderShop();shopSay('Гранаты куплены');
+  });
   row('Бронежилет'+(player.armor>0?': '+Math.round(player.armor)+'%':''),'Принимает 70% урона, до 100','$'+ARMOR_PRICE,cash>=ARMOR_PRICE&&player.armor<100,()=>{
     if(cash<ARMOR_PRICE)return;cash-=ARMOR_PRICE;player.armor=100;save();renderShop();shopSay('Бронежилет надет');
   });
@@ -420,13 +425,44 @@ function sndUpdate(){
   snd.eg.gain.setTargetAtTime(eg,t,.08);snd.sg.gain.setTargetAtTime(sg,t,.15);
 }
 
+/* ---------- grenades ---------- */
+const grens=[];
+function throwGren(){
+  if(!started||player.dead>0||player.gT>0)return;
+  if(inv.gren<=0){toast('Нет гранат. Их продают в оружейной','bad',1400);player.gT=.4;return}
+  inv.gren--;player.gT=.45;
+  const car=player.car;let ang=car?car.a:player.a,d=230,best=null,bd=360;
+  const test=(x,y)=>{const q=hyp(x-player.x,y-player.y);if(q>=40&&q<bd){bd=q;best={x,y}}};
+  for(const p of peds)if(p.hp>0)test(p.x,p.y);
+  for(const c of cars)if(c!==car&&c.dead===0&&(c.cop||c.target))test(c.x,c.y);
+  if(best){ang=Math.atan2(best.y-player.y,best.x-player.x);d=Math.min(bd,330)}
+  if(!car)player.a=ang;
+  grens.push({x:player.x+Math.cos(ang)*14,y:player.y+Math.sin(ang)*14,ang,rem:d,t:1.1});
+  addHeat(4);tone(320,160,.08,'sine',.1);
+}
+function updGrens(dt){
+  if(player.gT>0)player.gT-=dt;
+  for(let k=grens.length-1;k>=0;k--){
+    const g=grens[k];
+    if(g.rem>0){
+      const m=Math.min(330*dt,g.rem),nx=g.x+Math.cos(g.ang)*m,ny=g.y+Math.sin(g.ang)*m;
+      if(inBuilding(nx,ny))g.rem=0;else{g.x=nx;g.y=ny;g.rem-=m}
+    }
+    g.t-=dt;
+    if(g.t<=0){
+      grens.splice(k,1);boom(g.x,g.y,true);
+      for(const c of cars)if(c.dead===0&&hyp(c.x-g.x,c.y-g.y)<90)hurtCar(c,60,true);
+    }
+  }
+}
+
 /* ---------- ui helpers ---------- */
 let toastT=0,bannerT=0;
 function toast(msg,cls,ms){const t=$('toast');t.textContent=msg;t.className='show '+(cls||'');clearTimeout(toastT);toastT=setTimeout(()=>{t.className=''},ms||2200)}
 function banner(msg){const b=$('banner');if(!msg){b.className='';return}b.textContent=msg;b.className='show'}
-function save(){try{localStorage.setItem('krasny-port-v1',JSON.stringify({cash,done,own:inv.own,ammo:inv.ammo,cur:inv.cur,armor:Math.round(player.armor)}))}catch(e){}}
+function save(){try{localStorage.setItem('krasny-port-v1',JSON.stringify({cash,done,own:inv.own,ammo:inv.ammo,cur:inv.cur,armor:Math.round(player.armor),gren:inv.gren}))}catch(e){}}
 function load(){try{const s=JSON.parse(localStorage.getItem('krasny-port-v1')||'null');if(s){
-  cash=s.cash|0;done=s.done|0;player.armor=clamp(s.armor|0,0,100);
+  cash=s.cash|0;done=s.done|0;player.armor=clamp(s.armor|0,0,100);inv.gren=clamp(s.gren|0,0,20);
   if(Array.isArray(s.own))inv.own=ORDER.filter(id=>id==='pistol'||s.own.includes(id));
   if(s.ammo)for(const id of ORDER)if(id!=='pistol')inv.ammo[id]=Math.max(0,s.ammo[id]|0);
   inv.cur=inv.own.includes(s.cur)?s.cur:'pistol';
@@ -835,9 +871,10 @@ hold($('bFire'),()=>{btnFire=true},()=>{btnFire=false});
 hold($('bHand'),()=>{btnHand=true},()=>{btnHand=false});
 $('bAct').addEventListener('pointerdown',e=>{e.preventDefault();inp.act=true});
 $('bWeap').addEventListener('pointerdown',e=>{e.preventDefault();switchWeapon()});
+$('bGren').addEventListener('pointerdown',e=>{e.preventDefault();throwGren()});
 $('shopClose').addEventListener('click',closeShop);
 $('bMute').addEventListener('click',()=>{sndInit();snd.on=!snd.on;try{localStorage.setItem('krasny-port-snd',snd.on?'1':'0')}catch(e){}applyMute()});
-addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='KeyE'||e.code==='Enter')inp.act=true;if(e.code==='KeyQ')switchWeapon();if(e.code==='Space')e.preventDefault()});
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='KeyE'||e.code==='Enter')inp.act=true;if(e.code==='KeyQ')switchWeapon();if(e.code==='KeyG')throwGren();if(e.code==='Space')e.preventDefault()});
 addEventListener('keyup',e=>{keys[e.code]=false});
 addEventListener('contextmenu',e=>e.preventDefault());
 function readKeys(){
@@ -876,7 +913,7 @@ function update(dt){
     const p=peds[k];updPed(p,dt);
     if(p.hp<=0&&p.dead<=0||(p.cop&&p.leave>6)||hyp(p.x-player.x,p.y-player.y)>(p.cop?1100:1600))peds.splice(k,1);
   }
-  updBullets(dt);
+  updBullets(dt);updGrens(dt);
   for(let k=parts.length-1;k>=0;k--){const q=parts[k];q.x+=q.vx*dt;q.y+=q.vy*dt;q.vx*=.96;q.vy*=.96;q.life-=dt;if(q.life<=0)parts.splice(k,1)}
   for(let k=decals.length-1;k>=0;k--){decals[k].t-=dt;if(decals[k].t<=0)decals.splice(k,1)}
   if(decals.length>320)decals.splice(0,decals.length-320);
@@ -1022,6 +1059,7 @@ function draw(){
   for(const p of peds)if(p.x>x0&&p.x<x1&&p.y>y0&&p.y<y1)drawPed(p,false);
   if(!player.car&&player.dead<=0)drawPed(player,true);
   ctx.fillStyle='#fff2a8';for(const b of bullets){ctx.fillRect(b.x-2,b.y-1,5,2.2)}
+  for(const g of grens){ctx.fillStyle='#34452f';ctx.beginPath();ctx.arc(g.x,g.y,4.5,0,TAU);ctx.fill();ctx.fillStyle=Math.floor(time*12)%2?'#ff4d5e':'#ffcf3f';ctx.fillRect(g.x-1.5,g.y-1.5,3,3)}
   for(let i=bi0;i<=bi1;i++)for(let j=bj0;j<=bj1;j++)for(const b of blocks[i][j].bl)drawBuilding(b);
   for(let i=bi0;i<=bi1;i++)for(let j=bj0;j<=bj1;j++)for(const t of blocks[i][j].trees){
     ctx.fillStyle='rgba(0,0,0,.22)';ctx.beginPath();ctx.arc(t.x+5,t.y+7,t.r,0,TAU);ctx.fill();
@@ -1104,6 +1142,7 @@ function updHUD(){
     }
   }
   setT('bAct',c?'ВЫЙТИ':'ВОЙТИ');setH('bHand',!c);
+  setT('bGren','ГРАН\n'+inv.gren);
   {const w=curW();setT('bWeap',w.short+'\n'+(w.id==='pistol'?'∞':inv.ammo[w.id]))}
   let near=!!c;if(!c)for(const k of cars)if(k.dead===0&&hyp(k.x-player.x,k.y-player.y)<50){near=true;break}
   $('bAct').classList.toggle('dim',!near);
